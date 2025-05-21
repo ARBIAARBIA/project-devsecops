@@ -1,63 +1,90 @@
 pipeline {
     agent any
-    stages {
-        // 1. Setup and preparation
-        stage('Install Dependencies') {
-            steps { sh 'npm install' }
-        }
-        
-        // 2. Static code analysis (runs even if tests might fail)
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh '$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=amazon-prime -Dsonar.projectKey=amazon-prime'
-                }
-            }
-        }
-        
-        // 3. Build artifacts
-        stage('Build Docker Image') {
-            steps { sh 'docker build -t amazon-prime .' }
-        }
-        
-        // 4. Testing (moved after build)
-        stage('Unit & Integration Tests') {
-            steps {
-                script {
-                    sh '''
-                        # Cleanup any existing processes
-                        pkill -f "node.*5000" || true
-                        kill $(lsof -t -i:5000) || true
-                        sleep 2
-                    '''
-                    sh 'npm test'
-                }
-            }
-        }
-        
-        // 5. Deployment stages (only run if all previous succeeded)
-        stage('Deploy to Nexus') {
-            steps { 
-                script {
-                    docker.withRegistry("http://${registry}", registryCredentials) {
-                        sh 'docker push ${registry}/nodemongoapp:6.0'
-                    }
-                }
-            }
-        }
-        
-        stage('Run Application') {
-            steps {
-                script {
-                    docker.withRegistry("http://${registry}", registryCredentials) {
-                        sh '''
-                            docker pull ${registry}/nodemongoapp:6.0
-                            docker-compose down || true
-                            docker-compose up -d
-                        '''
-                    }
-                }
-            }
-        }
+
+    environment {
+        //registryCredentials = "nexus"
+        //registry = "192.168.56.10:8083"
+        SCANNER_HOME=tool 'sonar-scanner'
     }
-}
+   
+    stages {
+        /*stage('Install dependencies') {
+            steps {
+                script {
+                    sh('npm install')
+                }
+            }
+        }*/
+        stage("Install NPM Dependencies") {
+            steps {
+                sh "npm install"
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                script {
+		    sh 'pkill -f "node.*5000" || true'
+                    sh('npm test')
+                }
+            }
+        }
+
+        /*stage('SonarQube Analysis') {
+            steps {
+                script {  
+                    def scannerHome = tool 'scanner'
+                    withSonarQubeEnv {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                } 
+            }  
+        }*/
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=amazon-prime \
+                    -Dsonar.projectKey=amazon-prime '''
+                }
+            }
+        }
+        /* steps{
+        
+            script {
+                sh('docker compose build')
+                }
+             }
+         }*/
+        stage ("Build Docker Image") {
+                steps {
+                    sh "docker build -t amazon-prime ."
+                }
+            }
+        stage('Deploy  to Nexus') {
+            steps{  
+                script {
+
+                    docker.withRegistry("http://"+registry, registryCredentials ) {
+                    sh('docker push $registry/nodemongoapp:6.0 ')
+                }
+                }
+            }
+            }
+        stage('Run application ') {
+            steps{  
+                script {
+                docker.withRegistry("http://"+registry, registryCredentials ) {
+
+                    sh('docker pull $registry/nodemongoapp:6.0 ')
+
+                    sh('docker compose up -d ')
+                }
+                }
+            }
+            }
+
+
+
+
+        } // <-- This closes the 'stages' block
+} // <-- This closes the 'pipeline' block
