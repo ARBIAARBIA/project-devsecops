@@ -1,47 +1,61 @@
 require('dotenv').config({ path: '.env.test' });
 const chai = require('chai');
-const expect = chai.expect;
-const should = chai.should();
 const chaiHttp = require('chai-http');
 const server = require('../server');
-const Product = require('../product');
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
+const User = require('../models/User'); // Assuming you have a User model
 
 chai.use(chaiHttp);
-
-// Helper function to get auth token
-const getAuthToken = () => {
-  return jwt.sign(
-    { userId: 'testuser' }, 
-    process.env.JWT_SECRET, 
-    { expiresIn: '1h' }
-  );
-};
+const { expect } = chai;
 
 describe('Product API Tests', () => {
   let authToken;
+  let testUser;
 
-  before((done) => {
-    // Get auth token before tests run
-    authToken = getAuthToken();
-    done();
+  before(async () => {
+    // Connect to test database
+    await mongoose.connect(process.env.MONGO_URI);
+    
+    // Create test user if not exists
+    testUser = await User.findOneAndUpdate(
+      { username: process.env.TEST_USER },
+      { 
+        username: process.env.TEST_USER,
+        password: process.env.TEST_PASSWORD 
+      },
+      { upsert: true, new: true }
+    );
+
+    // Login to get token
+    const res = await chai.request(server)
+      .post('/api/auth/login')
+      .send({
+        username: process.env.TEST_USER,
+        password: process.env.TEST_PASSWORD
+      });
+    
+    authToken = res.body.token;
   });
 
-  it('should POST a valid product', (done) => {
-    let product = {
+  after(async () => {
+    // Clean up test database
+    await mongoose.connection.dropDatabase();
+    await mongoose.connection.close();
+  });
+
+  it('should POST a valid product', async () => {
+    const product = {
       name: "Test Product",
       price: 100,
       quantity: 20
     };
     
-    chai.request(server)
+    const res = await chai.request(server)
       .post('/api/products')
-      .set('Authorization', `Bearer ${authToken}`) // Add auth header
-      .send(product)
-      .end((err, res) => {
-        res.should.have.status(201);
-        done();
-      });
+      .set('Authorization', `Bearer ${authToken}`)
+      .send(product);
+    
+    expect(res).to.have.status(201);
+    expect(res.body).to.have.property('name', product.name);
   });
 });
