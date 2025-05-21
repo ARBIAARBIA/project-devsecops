@@ -38,6 +38,7 @@ pipeline {
                         done
                     '''
                     sh 'npm test'
+                    sh 'NODE_OPTIONS="--experimental-vm-modules" npm test'
                 }
             }
             post {
