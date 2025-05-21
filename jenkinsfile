@@ -21,11 +21,27 @@ pipeline {
             }
         }
 
-        stage('Unit Test') {
+                stage('Unit Test') {
             steps {
                 script {
-		    sh 'pkill -f "node.*5000" || true'
-                    sh('npm test')
+                    // More robust port cleanup
+                    sh '''
+                        # Kill any process using port 5000
+                        pkill -f "node.*5000" || true
+                        kill $(lsof -t -i:5000) || true
+                        # Verify port is free
+                        while netstat -tuln | grep ":5000"; do
+                            echo "Port 5000 still in use, waiting..."
+                            sleep 2
+                        done
+                    '''
+                    sh 'npm test'
+                }
+            }
+            post {
+                always {
+                    // Cleanup after tests
+                    sh 'pkill -f "node.*5000" || true'
                 }
             }
         }
