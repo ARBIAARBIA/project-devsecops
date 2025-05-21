@@ -1,9 +1,3 @@
-import chai from 'chai';
-import chaiHttp from 'chai-http';
-import sinon from 'sinon';
-import server from '../server.js'; // Note the .js extension
-import Product from '../product.js';
-
 require('dotenv').config({ path: '.env.test' });
 const chai = require('chai');
 const chaiHttp = require('chai-http');
