@@ -15,29 +15,25 @@ pipeline {
             }
         }
 
-        stage('Unit Test') {
-            steps {
-                script {
-                    // More robust port cleanup
-                    sh '''
-                        # Kill any process using the test port
-                        (lsof -ti:${TEST_PORT} | xargs kill -9) || true
-                        # Verify port is free
-                        while netstat -tuln | grep ":${TEST_PORT}"; do
-                            echo "Port ${TEST_PORT} still in use, waiting..."
-                            sleep 1
-                        done
-                    '''
-                    sh 'npm test'
-                }
-            }
-            post {
-                always {
-                    // Cleanup after tests
-                    sh '(lsof -ti:${TEST_PORT} | xargs kill -9) || true'
-                }
-            }
+stage('Unit Test') {
+    steps {
+        script {
+            sh '''
+                # More reliable port cleanup
+                pkill -f "node.*5000" || true
+                kill $(lsof -t -i:5000) || true
+                # Wait briefly to ensure port is released
+                sleep 2
+            '''
+            sh 'npm test'
         }
+    }
+    post {
+        always {
+            sh 'pkill -f "node.*5000" || true'
+        }
+    }
+}
 
         stage("Sonarqube Analysis") {
             steps {
