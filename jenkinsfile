@@ -2,16 +2,22 @@ pipeline {
     agent any
 
     environment {
-        registryCredentials = "nexus"
-        registry = "192.168.56.10:8083"
+        //registryCredentials = "nexus"
+        //registry = "192.168.56.10:8083"
+        SCANNER_HOME=tool 'sonar-scanner'
     }
    
     stages {
-        stage('Install dependencies') {
+        /*stage('Install dependencies') {
             steps {
                 script {
                     sh('npm install')
                 }
+            }
+        }*/
+        stage("Install NPM Dependencies") {
+            steps {
+                sh "npm install"
             }
         }
 
@@ -24,7 +30,7 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        /*stage('SonarQube Analysis') {
             steps {
                 script {  
                     def scannerHome = tool 'scanner'
@@ -33,63 +39,52 @@ pipeline {
                     }
                 } 
             }  
+        }*/
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=amazon-prime \
+                    -Dsonar.projectKey=amazon-prime '''
+                }
+            }
         }
- stage('Building images (node and mongo)') {
-      steps{
+        /* steps{
         
-        script {
-         sh('docker compose build')
-        }
-      }
-    }
-stage('Deploy  to Nexus') {
-     steps{  
-         script {
+            script {
+                sh('docker compose build')
+                }
+             }
+         }*/
+        stage ("Build Docker Image") {
+                steps {
+                    sh "docker build -t amazon-prime ."
+                }
+            }
+        stage('Deploy  to Nexus') {
+            steps{  
+                script {
 
-             docker.withRegistry("http://"+registry, registryCredentials ) {
-            sh('docker push $registry/nodemongoapp:6.0 ')
-          }
-        }
-      }
-    }
- stage('Run application ') {
-     steps{  
-         script {
-           docker.withRegistry("http://"+registry, registryCredentials ) {
+                    docker.withRegistry("http://"+registry, registryCredentials ) {
+                    sh('docker push $registry/nodemongoapp:6.0 ')
+                }
+                }
+            }
+            }
+        stage('Run application ') {
+            steps{  
+                script {
+                docker.withRegistry("http://"+registry, registryCredentials ) {
 
-            sh('docker pull $registry/nodemongoapp:6.0 ')
+                    sh('docker pull $registry/nodemongoapp:6.0 ')
 
-            sh('docker compose up -d ')
-          }
-        }
-      }
-    }
-  stage('Deploy to Kubernetes') {
-    environment {
-        KUBECONFIG = credentials('kubernetes-config')
-    }
-    steps {
-        script {
-            sh '''
-                mkdir -p ~/.kube
-                # Write raw content without interpretation
-                cat "$KUBECONFIG" > ~/.kube/config
-                chmod 600 ~/.kube/config
-                
-                # Verify config
-		echo "=== Current kubectl configuration ==="
-                kubectl config view --raw
-                kubectl get nodes
-            '''
-            
-            // Your deployment commands...
-            sh 'kubectl apply -f k8s/deployment.yaml'
-	    sh 'kubectl apply -f k8s/service.yaml'
-        }
-    }
-} 
+                    sh('docker compose up -d ')
+                }
+                }
+            }
+            }
 
 
 
-    } // <-- This closes the 'stages' block
+
+        } // <-- This closes the 'stages' block
 } // <-- This closes the 'pipeline' block
