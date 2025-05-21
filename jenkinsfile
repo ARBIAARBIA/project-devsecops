@@ -18,6 +18,8 @@ pipeline {
         stage("Install NPM Dependencies") {
             steps {
                 sh "npm install"
+                sh "npm install bcryptjs jsonwebtoken mongoose --save"
+                sh "npm install chai chai-http sinon --save-dev"
             }
         }
 
