@@ -2,19 +2,13 @@ pipeline {
     agent any
 
     environment {
-        //registryCredentials = "nexus"
-        //registry = "192.168.56.10:8083"
-        SCANNER_HOME=tool 'sonar-scanner'
+        registryCredentials = "nexus"
+        registry = "192.168.56.10:8083"
+        SCANNER_HOME = tool 'sonar-scanner'
+        TEST_PORT = "5000" // Make port configurable
     }
    
     stages {
-        /*stage('Install dependencies') {
-            steps {
-                script {
-                    sh('npm install')
-                }
-            }
-        }*/
         stage("Install NPM Dependencies") {
             steps {
                 sh "npm install"
@@ -24,67 +18,64 @@ pipeline {
         stage('Unit Test') {
             steps {
                 script {
-		    sh 'pkill -f "node.*5000" || true'
-                    sh('npm test')
+                    // More robust port cleanup
+                    sh '''
+                        # Kill any process using the test port
+                        (lsof -ti:${TEST_PORT} | xargs kill -9) || true
+                        # Verify port is free
+                        while netstat -tuln | grep ":${TEST_PORT}"; do
+                            echo "Port ${TEST_PORT} still in use, waiting..."
+                            sleep 1
+                        done
+                    '''
+                    sh 'npm test'
+                }
+            }
+            post {
+                always {
+                    // Cleanup after tests
+                    sh '(lsof -ti:${TEST_PORT} | xargs kill -9) || true'
                 }
             }
         }
 
-        /*stage('SonarQube Analysis') {
+        stage("Sonarqube Analysis") {
             steps {
-                script {  
-                    def scannerHome = tool 'scanner'
-                    withSonarQubeEnv {
-                        sh "${scannerHome}/bin/sonar-scanner"
-                    }
-                } 
-            }  
-        }*/
-        stage("Sonarqube Analysis "){
-            steps{
                 withSonarQubeEnv('sonar-server') {
                     sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=amazon-prime \
                     -Dsonar.projectKey=amazon-prime '''
                 }
             }
         }
-        /* steps{
-        
-            script {
-                sh('docker compose build')
-                }
-             }
-         }*/
-        stage ("Build Docker Image") {
-                steps {
-                    sh "docker build -t amazon-prime ."
-                }
+
+        stage("Build Docker Image") {
+            steps {
+                sh "docker build -t ${registry}/nodemongoapp:6.0 ."
             }
-        stage('Deploy  to Nexus') {
-            steps{  
+        }
+
+        stage('Deploy to Nexus') {
+            steps {  
                 script {
+                    docker.withRegistry("http://${registry}", registryCredentials) {
+                        sh 'docker push ${registry}/nodemongoapp:6.0'
+                    }
+                }
+            }
+        }
 
-                    docker.withRegistry("http://"+registry, registryCredentials ) {
-                    sh('docker push $registry/nodemongoapp:6.0 ')
-                }
-                }
-            }
-            }
-        stage('Run application ') {
-            steps{  
+        stage('Run application') {
+            steps {  
                 script {
-                docker.withRegistry("http://"+registry, registryCredentials ) {
-
-                    sh('docker pull $registry/nodemongoapp:6.0 ')
-
-                    sh('docker compose up -d ')
-                }
+                    docker.withRegistry("http://${registry}", registryCredentials) {
+                        sh '''
+                            docker pull ${registry}/nodemongoapp:6.0
+                            docker-compose down || true  # Clean up any existing containers
+                            docker-compose up -d
+                        '''
+                    }
                 }
             }
-            }
-
-
-
-
-        } // <-- This closes the 'stages' block
-} // <-- This closes the 'pipeline' block
+        }
+    }
+}
